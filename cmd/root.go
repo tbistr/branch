@@ -1,9 +1,14 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
+	"strconv"
+	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
+	"github.com/tbistr/branch/view"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -18,7 +23,56 @@ This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) {},
+	Run: func(cmd *cobra.Command, args []string) {
+
+		filters := []string{"smtpd", "ssh", "huga", "piyo"}
+
+		type grepper struct {
+			filter string
+			c      chan string
+		}
+
+		greppers := make([]grepper, 0)
+
+		for _, text := range filters {
+			c := make(chan string)
+			greppers = append(greppers, grepper{
+				filter: text,
+				c:      c,
+			})
+		}
+
+		for _, g := range greppers {
+			go func(ig grepper) {
+				cnt := 0
+				for {
+					time.Sleep(1 * time.Second)
+					ig.c <- strconv.Itoa(cnt)
+					cnt++
+				}
+			}(g)
+		}
+
+		cs := make([]<-chan string, 0)
+		for _, grepper := range greppers {
+			cs = append(cs, grepper.c)
+		}
+		// views = append(views, view.TextViewModel{
+		// 	ContentReader: defaultR,
+		// })
+		m := view.New(cs)
+
+		p := tea.NewProgram(
+			m,
+			tea.WithAltScreen(), // use the full size of the terminal in its "alternate screen buffer"
+			// tea.WithMouseCellMotion(), // turn on mouse support so we can track the mouse wheel
+		)
+
+		if _, err := p.Run(); err != nil {
+			fmt.Println("could not run program:", err)
+			os.Exit(1)
+		}
+	},
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
