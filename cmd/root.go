@@ -1,10 +1,10 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"os"
-	"strconv"
-	"time"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -25,7 +25,7 @@ to quickly create a Cobra application.`,
 	// has an action associated with it:
 	Run: func(cmd *cobra.Command, args []string) {
 
-		filters := []string{"smtpd", "ssh", "huga", "piyo"}
+		filters := []string{"python", "x86", "ssh"}
 
 		type grepper struct {
 			filter string
@@ -41,29 +41,33 @@ to quickly create a Cobra application.`,
 				c:      c,
 			})
 		}
+		defaultC := make(chan string)
 
-		for _, g := range greppers {
-			go func(ig grepper) {
-				cnt := 0
-				for {
-					time.Sleep(1 * time.Second)
-					ig.c <- strconv.Itoa(cnt)
-					cnt++
+		stdinScanner := bufio.NewScanner(os.Stdin)
+		go func() {
+			for stdinScanner.Scan() {
+				line := stdinScanner.Text()
+				shouldDefault := true
+				for _, g := range greppers {
+					if strings.Contains(line, g.filter) {
+						g.c <- stdinScanner.Text()
+						shouldDefault = false
+					}
 				}
-			}(g)
-		}
+				if shouldDefault {
+					defaultC <- stdinScanner.Text()
+				}
+			}
+		}()
 
 		cs := make([]<-chan string, 0)
 		for _, grepper := range greppers {
 			cs = append(cs, grepper.c)
 		}
-		// views = append(views, view.TextViewModel{
-		// 	ContentReader: defaultR,
-		// })
-		m := view.New(cs)
+		cs = append(cs, defaultC)
 
 		p := tea.NewProgram(
-			m,
+			view.New(cs),
 			tea.WithAltScreen(), // use the full size of the terminal in its "alternate screen buffer"
 			// tea.WithMouseCellMotion(), // turn on mouse support so we can track the mouse wheel
 		)
