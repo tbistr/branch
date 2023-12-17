@@ -75,7 +75,7 @@ func (m TextViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m TextViewModel) View() string {
-	border := lipgloss.NewStyle().Render(strings.Repeat("|\n", noZero(m.h-1)) + "|")
+	border := lipgloss.NewStyle().Render(strings.Repeat("|\n", max(m.h-1, 0)) + "|")
 
 	windowStyle := lipgloss.NewStyle().
 		Width(m.eachW).MaxWidth(m.eachW).
@@ -92,11 +92,11 @@ func (m TextViewModel) View() string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, views...)
 }
 
-func noZero(n int) int {
-	if n < 0 {
-		return 0
+func max(a, b int) int {
+	if a > b {
+		return a
 	}
-	return n
+	return b
 }
 
 func tail(s []string, n int) []string {
