@@ -61,6 +61,13 @@ func rootCmdRun(cmd *cobra.Command, args []string) {
 	}
 	defaultC := make(chan string)
 
+	// check if pipe is connected
+	stat, _ := os.Stdin.Stat()
+	if (stat.Mode() & os.ModeCharDevice) != 0 {
+		fmt.Println("The command is intended to work with pipes.")
+		return
+	}
+
 	stdinScanner := bufio.NewScanner(os.Stdin)
 	go func() {
 		for stdinScanner.Scan() {
