@@ -13,7 +13,8 @@ import (
 
 var (
 	// Used for flags.
-	greps []string
+	greps       []string
+	dumpDefault bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -41,8 +42,11 @@ func Execute() {
 }
 
 func init() {
+	// --grep=hoge,huga
 	rootCmd.Flags().StringArrayVar(&greps, "grep", []string{}, "Filters to apply to the output")
 	rootCmd.MarkFlagRequired("grep")
+	// --default
+	rootCmd.Flags().BoolVarP(&dumpDefault, "default", "d", false, "Dump lines that do not match any filter")
 }
 
 func rootCmdRun(cmd *cobra.Command, args []string) {
@@ -52,12 +56,9 @@ func rootCmdRun(cmd *cobra.Command, args []string) {
 	}
 
 	greppers := make([]grepper, 0)
-	for _, text := range greps {
+	for _, filter := range greps {
 		c := make(chan string)
-		greppers = append(greppers, grepper{
-			filter: text,
-			c:      c,
-		})
+		greppers = append(greppers, grepper{filter, c})
 	}
 	defaultC := make(chan string)
 
@@ -72,7 +73,7 @@ func rootCmdRun(cmd *cobra.Command, args []string) {
 	go func() {
 		for stdinScanner.Scan() {
 			line := stdinScanner.Text()
-			shouldDefault := true
+			shouldDefault := dumpDefault
 			for _, g := range greppers {
 				if strings.Contains(line, g.filter) {
 					g.c <- stdinScanner.Text()
@@ -89,7 +90,9 @@ func rootCmdRun(cmd *cobra.Command, args []string) {
 	for _, grepper := range greppers {
 		cs = append(cs, grepper.c)
 	}
-	cs = append(cs, defaultC)
+	if dumpDefault {
+		cs = append(cs, defaultC)
+	}
 
 	p := tea.NewProgram(
 		view.New(cs),
