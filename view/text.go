@@ -7,16 +7,26 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-type TextViewModel struct {
-	inputs      []<-chan string
-	lss         [][]string
-	h, w, eachW int
+const (
+	LINE_BUFFER_SIZE = 1000
+)
+
+type Window struct {
+	Title string
+	Input <-chan string
+	lines []string
 }
 
-func New(inputs []<-chan string) TextViewModel {
-	m := TextViewModel{inputs: inputs}
-	m.lss = make([][]string, len(m.inputs))
-	return m
+func (w *Window) pushLine(line string) {
+	if len(w.lines) > LINE_BUFFER_SIZE {
+		w.lines = w.lines[1:]
+	}
+	w.lines = append(w.lines, line)
+}
+
+type TextViewModel struct {
+	Windows     []*Window
+	h, w, eachW int
 }
 
 type initMsg struct{}
@@ -28,17 +38,14 @@ func (m TextViewModel) Init() tea.Cmd {
 }
 
 type scanMsg struct {
-	index int
-	text  string
+	i    int
+	text string
 }
 
 func cmdRead(i int, input <-chan string) tea.Cmd {
 	return func() tea.Msg {
 		text := <-input
-		return scanMsg{
-			index: i,
-			text:  text,
-		}
+		return scanMsg{i, text}
 	}
 }
 
@@ -50,18 +57,18 @@ func (m TextViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case initMsg:
-		for i, input := range m.inputs {
-			cmds = append(cmds, cmdRead(i, input))
+		for i, w := range m.Windows {
+			cmds = append(cmds, cmdRead(i, w.Input))
 		}
 
 	case scanMsg:
-		m.pushLine(msg.index, msg.text)
-		cmd = cmdRead(msg.index, m.inputs[msg.index])
+		m.Windows[msg.i].pushLine(msg.text)
+		cmd = cmdRead(msg.i, m.Windows[msg.i].Input)
 
 	case tea.WindowSizeMsg:
 		m.h = msg.Height
 		m.w = msg.Width
-		m.eachW = (m.w - len(m.inputs) - 1) / len(m.inputs)
+		m.eachW = (m.w - len(m.Windows) - 1) / len(m.Windows)
 	case tea.KeyMsg:
 		if msg.Type == tea.KeyCtrlC {
 			cmd = tea.Quit
@@ -80,11 +87,21 @@ func (m TextViewModel) View() string {
 	windowStyle := lipgloss.NewStyle().
 		Width(m.eachW).MaxWidth(m.eachW).
 		Height(m.h).MaxHeight(m.h)
-	views := make([]string, 0, len(m.lss)*2)
-	for _, ls := range m.lss {
+	titleStyle := lipgloss.NewStyle().
+		Width(m.eachW).MaxWidth(m.eachW).
+		Bold(true).
+		Reverse(true).
+		Align(lipgloss.Center)
+
+	views := make([]string, 0, len(m.Windows)*2)
+	for _, w := range m.Windows {
+		title := titleStyle.Render(w.Title)
+		windowView := lipgloss.JoinVertical(lipgloss.Left,
+			title,
+			lipgloss.JoinVertical(lipgloss.Left, tail(w.lines, m.h-1)...))
 		views = append(views,
 			border,
-			windowStyle.Render(lipgloss.JoinVertical(lipgloss.Left, tail(ls, m.h)...)),
+			windowStyle.Render(windowView),
 		)
 	}
 	views = append(views, border)
@@ -103,15 +120,5 @@ func tail(s []string, n int) []string {
 	if len(s) <= n {
 		return s
 	}
-	return s[len(s)-n:]
-}
-
-func (m *TextViewModel) pushLine(i int, line string) {
-	ls := m.lss[i]
-	if len(ls) > 100 {
-		ls = ls[1:]
-	}
-	ls = append(ls, line)
-
-	m.lss[i] = ls
+	return s[len(s)-n-1:]
 }
