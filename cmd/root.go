@@ -20,13 +20,18 @@ var (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "branch",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
+	Short: "branch is a grep-like tool with multiple output windows",
+	Long: `branch is a grep-like tool with multiple output windows.
+It is intended to be used with pipes.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+For example, you can use it like this:
+$ cat /var/log/syslog | branch --grep=error --grep=warning --default
+
+The above command will show you 3 windows:
+1. error
+2. warning
+3. default(= lines that do not match any filter)
+`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	Run: rootCmdRun,
