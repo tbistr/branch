@@ -41,11 +41,6 @@ func (w *Window) pushLine(line string) {
 	w.buf = append(w.buf, line)
 }
 
-// Init initializes the window model.
-func (w Window) Init() tea.Cmd {
-	return cmdRead(w.id, w.Input)
-}
-
 // scanMsg represents a message from the input channel.
 type scanMsg struct {
 	id   int // which window the message is for
@@ -63,6 +58,11 @@ func cmdRead(id int, input <-chan string) tea.Cmd {
 // windowSizeMsg is the tea.WindowSizeMsg for the child window.
 type windowSizeMsg struct {
 	Width, Height int
+}
+
+// Init initializes the window model.
+func (w Window) Init() tea.Cmd {
+	return cmdRead(w.id, w.Input)
 }
 
 // Update updates the window state based on the received message.
