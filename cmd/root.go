@@ -93,20 +93,14 @@ func rootCmdRun(cmd *cobra.Command, args []string) {
 
 	ws := make([]*view.Window, 0)
 	for _, grepper := range greppers {
-		ws = append(ws, &view.Window{
-			Title: fmt.Sprintf("grep by %s", grepper.filter),
-			Input: grepper.c,
-		})
+		ws = append(ws, view.NewWindow(fmt.Sprintf("grep by %s", grepper.filter), grepper.c))
 	}
 	if dumpDefault {
-		ws = append(ws, &view.Window{
-			Title: "default",
-			Input: defaultC,
-		})
+		ws = append(ws, view.NewWindow("default", defaultC))
 	}
 
 	p := tea.NewProgram(
-		view.TextViewModel{Windows: ws},
+		view.Branch{Windows: ws},
 		tea.WithAltScreen(),
 		// tea.WithMouseCellMotion(),
 	)
