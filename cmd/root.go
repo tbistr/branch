@@ -3,8 +3,9 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
-	"strings"
+	"os/exec"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -13,7 +14,6 @@ import (
 
 var (
 	// Used for flags.
-	greps       []string
 	dumpDefault bool
 )
 
@@ -47,26 +47,11 @@ func Execute() {
 }
 
 func init() {
-	// --grep=hoge,huga
-	rootCmd.Flags().StringArrayVar(&greps, "grep", []string{}, "Filters to apply to the output")
-	rootCmd.MarkFlagRequired("grep")
 	// --default
 	rootCmd.Flags().BoolVarP(&dumpDefault, "default", "d", false, "Dump lines that do not match any filter")
 }
 
 func rootCmdRun(cmd *cobra.Command, args []string) {
-	type grepper struct {
-		filter string
-		c      chan string
-	}
-
-	greppers := make([]grepper, 0)
-	for _, filter := range greps {
-		c := make(chan string)
-		greppers = append(greppers, grepper{filter, c})
-	}
-	defaultC := make(chan string)
-
 	// check if pipe is connected
 	stat, _ := os.Stdin.Stat()
 	if (stat.Mode() & os.ModeCharDevice) != 0 {
@@ -74,30 +59,53 @@ func rootCmdRun(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	stdinScanner := bufio.NewScanner(os.Stdin)
-	go func() {
-		for stdinScanner.Scan() {
-			line := stdinScanner.Text()
-			shouldDefault := dumpDefault
-			for _, g := range greppers {
-				if strings.Contains(line, g.filter) {
-					g.c <- stdinScanner.Text()
-					shouldDefault = false
-				}
-			}
-			if shouldDefault {
-				defaultC <- stdinScanner.Text()
-			}
-		}
-	}()
+	type cmder struct {
+		cmd   *exec.Cmd
+		title string
+	}
 
-	ws := make([]*view.Window, 0)
-	for _, grepper := range greppers {
-		ws = append(ws, view.NewWindow(fmt.Sprintf("grep by %s", grepper.filter), grepper.c))
+	cmders := make([]cmder, 0, len(args))
+	for _, arg := range args {
+		cmders = append(cmders, cmder{exec.Command("sh", "-c", arg), arg})
 	}
 	if dumpDefault {
-		ws = append(ws, view.NewWindow("default", defaultC))
+		cmders = append(cmders, cmder{exec.Command("sh", "-c", "cat"), "default"})
 	}
+
+	ws := make([]*view.Window, 0, len(cmders))
+	stdinWriters := make([]io.WriteCloser, 0, len(cmders))
+	for _, c := range cmders {
+		// input
+		r, w := io.Pipe()
+		c.cmd.Stdin = r
+		stdinWriters = append(stdinWriters, w)
+
+		// stdout
+		stdout, _ := c.cmd.StdoutPipe()
+		ch := make(chan string)
+		go func() {
+			scanner := bufio.NewScanner(stdout)
+			for scanner.Scan() {
+				ch <- scanner.Text()
+			}
+			close(ch)
+		}()
+
+		ws = append(ws, view.NewWindow(c.title, ch))
+		c.cmd.Start()
+	}
+
+	// stdin multiplexer
+	go func() {
+		noClosers := make([]io.Writer, 0, len(stdinWriters))
+		for _, w := range stdinWriters {
+			noClosers = append(noClosers, w)
+		}
+		io.Copy(io.MultiWriter(noClosers...), os.Stdin)
+		for _, w := range stdinWriters {
+			w.Close()
+		}
+	}()
 
 	p := tea.NewProgram(
 		view.Branch{Windows: ws},
@@ -108,5 +116,8 @@ func rootCmdRun(cmd *cobra.Command, args []string) {
 	if _, err := p.Run(); err != nil {
 		fmt.Println("could not run program:", err)
 		os.Exit(1)
+	}
+	for _, c := range cmders {
+		c.cmd.Process.Kill()
 	}
 }
