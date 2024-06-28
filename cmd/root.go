@@ -76,9 +76,8 @@ func rootCmdRun(cmd *cobra.Command, args []string) {
 	stdinWriters := make([]io.WriteCloser, 0, len(cmders))
 	for _, c := range cmders {
 		// input
-		r, w := io.Pipe()
-		c.cmd.Stdin = r
-		stdinWriters = append(stdinWriters, w)
+		inpipe, _ := c.cmd.StdinPipe()
+		stdinWriters = append(stdinWriters, inpipe)
 
 		// stdout
 		stdout, _ := c.cmd.StdoutPipe()
