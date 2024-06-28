@@ -8,6 +8,7 @@ import (
 	"os/exec"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/creack/pty"
 	"github.com/spf13/cobra"
 	"github.com/tbistr/branch/view"
 )
@@ -75,15 +76,15 @@ func rootCmdRun(cmd *cobra.Command, args []string) {
 	ws := make([]*view.Window, 0, len(cmders))
 	stdinWriters := make([]io.WriteCloser, 0, len(cmders))
 	for _, c := range cmders {
+		f, _ := pty.Start(c.cmd)
+
 		// input
-		inpipe, _ := c.cmd.StdinPipe()
-		stdinWriters = append(stdinWriters, inpipe)
+		stdinWriters = append(stdinWriters, f)
 
 		// stdout
-		stdout, _ := c.cmd.StdoutPipe()
 		ch := make(chan string)
 		go func() {
-			scanner := bufio.NewScanner(stdout)
+			scanner := bufio.NewScanner(f)
 			for scanner.Scan() {
 				ch <- scanner.Text()
 			}
@@ -91,7 +92,6 @@ func rootCmdRun(cmd *cobra.Command, args []string) {
 		}()
 
 		ws = append(ws, view.NewWindow(c.title, ch))
-		c.cmd.Start()
 	}
 
 	// stdin multiplexer
