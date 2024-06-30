@@ -2,8 +2,8 @@ package view
 
 import (
 	"bufio"
+	"fmt"
 	"io"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -20,6 +20,7 @@ type Window struct {
 	Input         io.Reader
 	scanner       *bufio.Scanner
 	buf           []string // line buffer
+	viewB, viewE  int      // index of the first and last line to display
 	height, width int
 }
 
@@ -38,13 +39,56 @@ func NewWindow(title string, input io.Reader) *Window {
 	}
 }
 
+// scrollUp scrolls the window up by one line.
+func (w *Window) scrollUp() {
+	if w.viewE-w.viewB < w.height {
+		w.viewB = 0
+		w.viewE = len(w.buf)
+	}
+	if w.viewB > 0 {
+		w.viewB -= 1
+		w.viewE -= 1
+	}
+}
+
+// scrollDown scrolls the window down by one line.
+func (w *Window) scrollDown() {
+	if w.viewE-w.viewB < w.height {
+		w.viewB = 0
+		w.viewE = len(w.buf)
+	}
+	if w.viewE < len(w.buf) {
+		w.viewB += 1
+		w.viewE += 1
+	}
+}
+
 // pushLine adds a line to the buffer. If the buffer is full, it removes the oldest line.
 func (w *Window) pushLine(line string) {
 	if len(w.buf) >= LINE_BUFFER_CAP {
 		w.buf = w.buf[1:]
 	}
 	w.buf = append(w.buf, line)
+	w.scrollDown()
 }
+
+func (w *Window) changeSize(width, height int) {
+	w.width = width
+	w.height = height
+
+	// Adjust the view to the new size
+	if len(w.buf) < height {
+		w.viewB = 0
+		w.viewE = len(w.buf)
+	} else {
+		w.viewB = len(w.buf) - height
+		w.viewE = len(w.buf)
+	}
+}
+
+type scrollUpMsg struct{}
+
+type scrollDownMsg struct{}
 
 // scanMsg represents a message from the input channel.
 type scanMsg struct {
@@ -76,6 +120,11 @@ func (w Window) Init() tea.Cmd {
 // Update updates the window state based on the received message.
 func (w Window) Update(msg tea.Msg) (Window, tea.Cmd) {
 	switch msg := msg.(type) {
+	case scrollUpMsg:
+		w.scrollUp()
+	case scrollDownMsg:
+		w.scrollDown()
+
 	case scanMsg:
 		if msg.id != w.id {
 			return w, nil
@@ -84,8 +133,8 @@ func (w Window) Update(msg tea.Msg) (Window, tea.Cmd) {
 		return w, cmdRead(msg.id, w.scanner)
 
 	case windowSizeMsg:
-		w.height = msg.Height
-		w.width = msg.Width
+		w.changeSize(msg.Width, msg.Height)
+		w.pushLine(fmt.Sprintln("Resized to ", msg.Width, "x", msg.Height))
 	}
 	return w, nil
 }
@@ -101,83 +150,7 @@ func (w Window) View() string {
 	contentStyle := withWidth.Height(w.height - 1).MaxHeight(w.height - 1)
 
 	title := titleStyle.Render(w.Title)
-	content := contentStyle.Render(lipgloss.JoinVertical(lipgloss.Left, tail(w.buf, w.height-1)...))
+	content := contentStyle.Render(lipgloss.JoinVertical(lipgloss.Left, w.buf[w.viewB:w.viewE]...))
 
 	return lipgloss.JoinVertical(lipgloss.Left, title, content)
-}
-
-// Branch is a model that represents the entire view of the application.
-type Branch struct {
-	Windows                  []*Window
-	height, width, eachWidth int
-}
-
-// Init initializes the view model.
-func (m Branch) Init() tea.Cmd {
-	cmds := make([]tea.Cmd, 0, len(m.Windows))
-	for _, w := range m.Windows {
-		cmds = append(cmds, w.Init())
-	}
-	return tea.Batch(cmds...)
-}
-
-// Update updates the model state based on the received message.
-func (m Branch) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
-
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.height = msg.Height
-		m.width = msg.Width
-		m.eachWidth = (m.width - len(m.Windows) - 1) / len(m.Windows)
-		cmds = append(cmds, func() tea.Msg {
-			return windowSizeMsg{m.eachWidth, m.height}
-		})
-
-	case tea.KeyMsg:
-		if msg.Type == tea.KeyCtrlC {
-			return m, tea.Quit
-		}
-	}
-
-	// Update all sub windows
-	for i, w := range m.Windows {
-		newWindow, cmd := w.Update(msg)
-		m.Windows[i] = &newWindow
-		cmds = append(cmds, cmd)
-	}
-
-	return m, tea.Batch(cmds...)
-}
-
-// View renders the view model.
-func (m Branch) View() string {
-	border := lipgloss.NewStyle().Render(strings.Repeat("|\n", max(m.height-1, 0)) + "|")
-
-	views := make([]string, 0, len(m.Windows)*2)
-	for _, w := range m.Windows {
-		views = append(views,
-			border,
-			w.View(),
-		)
-	}
-	views = append(views, border)
-
-	return lipgloss.JoinHorizontal(lipgloss.Top, views...)
-}
-
-// max returns the maximum of two integers.
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-// tail returns the last n elements of a slice.
-func tail(s []string, n int) []string {
-	if len(s) <= n {
-		return s
-	}
-	return s[len(s)-n-1:]
 }
