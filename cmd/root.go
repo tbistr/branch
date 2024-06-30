@@ -10,7 +10,6 @@ import (
 	"github.com/creack/pty"
 	"github.com/spf13/cobra"
 	"github.com/tbistr/branch/view"
-	"golang.org/x/sys/unix"
 )
 
 var (
@@ -72,12 +71,12 @@ func rootCmdRun(cmd *cobra.Command, args []string) {
 	ws := make([]*view.Window, 0, len(cmders))
 	stdinWriters := make([]io.WriteCloser, 0, len(cmders))
 	for _, c := range cmders {
-		f, _ := pty.Start(c.cmd)
-		defer f.Close()
-		echoOff(f)
+		ptyFD, _ := pty.Start(c.cmd)
+		defer ptyFD.Close()
+		echoOff(ptyFD)
 
-		stdinWriters = append(stdinWriters, f)
-		ws = append(ws, view.NewWindow(c.title, f))
+		stdinWriters = append(stdinWriters, ptyFD)
+		ws = append(ws, view.NewWindow(c.title, ptyFD))
 	}
 
 	// stdin multiplexer
@@ -101,26 +100,5 @@ func rootCmdRun(cmd *cobra.Command, args []string) {
 	}
 	for _, c := range cmders {
 		c.cmd.Process.Kill()
-	}
-}
-
-func echoOff(f *os.File) {
-	fd := int(f.Fd())
-	//      const ioctlReadTermios = unix.TIOCGETA // OSX.
-	const ioctlReadTermios = unix.TCGETS // Linux
-	//      const ioctlWriterTermios =  unix.TIOCSETA // OSX.
-	const ioctlWriteTermios = unix.TCSETS // Linux
-
-	termios, err := unix.IoctlGetTermios(fd, ioctlReadTermios)
-	if err != nil {
-		panic(err)
-	}
-
-	newState := *termios
-	newState.Lflag &^= unix.ECHO
-	newState.Lflag |= unix.ICANON | unix.ISIG
-	newState.Iflag |= unix.ICRNL
-	if err := unix.IoctlSetTermios(fd, ioctlWriteTermios, &newState); err != nil {
-		panic(err)
 	}
 }
