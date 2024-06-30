@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -74,22 +73,11 @@ func rootCmdRun(cmd *cobra.Command, args []string) {
 	stdinWriters := make([]io.WriteCloser, 0, len(cmders))
 	for _, c := range cmders {
 		f, _ := pty.Start(c.cmd)
+		defer f.Close()
 		echoOff(f)
 
-		// input
 		stdinWriters = append(stdinWriters, f)
-
-		// stdout
-		ch := make(chan string)
-		go func() {
-			scanner := bufio.NewScanner(f)
-			for scanner.Scan() {
-				ch <- scanner.Text()
-			}
-			close(ch)
-		}()
-
-		ws = append(ws, view.NewWindow(c.title, ch))
+		ws = append(ws, view.NewWindow(c.title, f))
 	}
 
 	// stdin multiplexer
@@ -113,9 +101,6 @@ func rootCmdRun(cmd *cobra.Command, args []string) {
 	}
 	for _, c := range cmders {
 		c.cmd.Process.Kill()
-	}
-	for _, w := range stdinWriters {
-		w.Close()
 	}
 }
 

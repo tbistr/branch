@@ -1,6 +1,8 @@
 package view
 
 import (
+	"bufio"
+	"io"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -15,7 +17,8 @@ const (
 type Window struct {
 	Title         string
 	id            int // id of the window (used to avoid channel conflicts)
-	Input         <-chan string
+	Input         io.Reader
+	scanner       *bufio.Scanner
 	buf           []string // line buffer
 	height, width int
 }
@@ -23,13 +26,15 @@ type Window struct {
 var idIota int = 0
 
 // NewWindow creates a new window model.
-func NewWindow(title string, input <-chan string) *Window {
+func NewWindow(title string, input io.Reader) *Window {
 	idIota += 1
+	scanner := bufio.NewScanner(input)
 	return &Window{
-		Title: title,
-		id:    idIota,
-		Input: input,
-		buf:   make([]string, 0, LINE_BUFFER_CAP),
+		Title:   title,
+		id:      idIota,
+		Input:   input,
+		scanner: scanner,
+		buf:     make([]string, 0, LINE_BUFFER_CAP),
 	}
 }
 
@@ -48,9 +53,12 @@ type scanMsg struct {
 }
 
 // cmdRead returns a command that waits for input from the channel and sends a message.
-func cmdRead(id int, input <-chan string) tea.Cmd {
+func cmdRead(id int, scanner *bufio.Scanner) tea.Cmd {
 	return func() tea.Msg {
-		text := <-input
+		text := ""
+		if scanner.Scan() {
+			text = scanner.Text()
+		}
 		return scanMsg{id, text}
 	}
 }
@@ -62,7 +70,7 @@ type windowSizeMsg struct {
 
 // Init initializes the window model.
 func (w Window) Init() tea.Cmd {
-	return cmdRead(w.id, w.Input)
+	return cmdRead(w.id, w.scanner)
 }
 
 // Update updates the window state based on the received message.
@@ -73,7 +81,7 @@ func (w Window) Update(msg tea.Msg) (Window, tea.Cmd) {
 			return w, nil
 		}
 		w.pushLine(msg.text)
-		return w, cmdRead(msg.id, w.Input)
+		return w, cmdRead(msg.id, w.scanner)
 
 	case windowSizeMsg:
 		w.height = msg.Height
