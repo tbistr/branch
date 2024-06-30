@@ -6,5 +6,5 @@ It reads from stdin and runs multiple commands in parallel, piping the input to 
 ## Example
 
 ```bash
-head -c 1000000 /dev/urandom | pv -q -L 1k | hexdump -C | go run . --grep=A --grep=B
+go run ./sample/rand.go | go run . "grep a" "grep b" --default 
 ```

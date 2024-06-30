@@ -21,17 +21,13 @@ var (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "branch",
-	Short: "branch is a grep-like tool with multiple output windows",
-	Long: `branch is a grep-like tool with multiple output windows.
-It is intended to be used with pipes.
+	Short: "branch is a command line demultiplexer with multiple output windows",
+	Long: `branch is a command line demultiplexer with multiple output windows.
+It reads from stdin and sends it to multiple commands.
+Each command is displayed in a separate window.
 
-For example, you can use it like this:
-$ cat /var/log/syslog | branch --grep=error --grep=warning --default
-
-The above command will show you 3 windows:
-1. error
-2. warning
-3. default(= lines that do not match any filter)
+Example:
+  tail -f /var/log/syslog | branch 'grep -i error' 'grep -i warn' 'grep -i fail'
 `,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
